@@ -68,8 +68,9 @@ fn ensure_repo_initialised() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Create an empty initial commit so the repo has a valid HEAD ---
     // We need to check whether there are any commits yet.
-    let (has_commits, _, _) = run_git(&["rev-parse", "HEAD"]);
-    let has_commits = has_commits.unwrap_or(false);
+    let has_commits = run_git(&["rev-parse", "HEAD"])
+        .map(|(ok, _, _)| ok)
+        .unwrap_or(false);
 
     if !has_commits {
         println!("   Creating initial empty commit...");
