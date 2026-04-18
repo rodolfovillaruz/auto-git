@@ -22,18 +22,32 @@ A Rust-based file system watcher that automatically commits (and optionally push
 - A Git repository (or the ability to create one via `GIT_DIR`/`GIT_WORK_TREE` environment variables)
 
 ---
-
 ## 🚀 Installation
+
+### From crates.io *(recommended)*
+
+```bash
+cargo install watch-and-commit
+```
+
+This downloads, compiles, and places the `wac` binary in `~/.cargo/bin/`.
+Make sure that directory is on your `PATH` (the `rustup` installer adds it automatically).
+
+```bash
+wac --help
+```
+
+### From source
 
 Clone the repository and build:
 
 ```bash
-git clone <your-repo-url>
-cd <your-repo>
+git clone https://github.com/rodolfovillaruz/watch-and-commit
+cd watch-and-commit
 cargo build --release
 ```
 
-The compiled binary will be available at `target/release/<binary-name>`.
+The compiled binary will be available at `target/release/wac`.
 
 ### Dependencies
 
@@ -42,7 +56,7 @@ This project uses the following crates (add to your `Cargo.toml` if setting up f
 ```toml
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-notify = "6"
+notify = "8"
 ```
 
 ---
