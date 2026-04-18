@@ -1,6 +1,6 @@
 [package]
 name = "watch-and-commit"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 authors = ["Rodolfo Villaruz <rodolfo@yes.ph>"]
 description = "A CLI tool that automatically stages and commits file changes using a filesystem watcher"
