@@ -1,250 +1,178 @@
-# Async Git Auto-Commit File Watcher
+# watch-and-commit (`wac`)
 
-A Rust-based file system watcher that automatically commits (and optionally pushes) changes to a Git repository whenever files are modified. Built with `tokio` for async I/O and `notify` for cross-platform file system events, it uses a debouncing strategy to batch rapid successive changes into a single commit.
+A small Rust CLI that watches your working directory for file changes and
+automatically stages, commits, and pushes them to Git — no manual `git add` /
+`git commit` required.
 
----
+It's built for scenarios where you want a continuous, low-friction commit
+history: pairing with an AI coding agent, screen-recording a live coding
+session, or just auto-saving work-in-progress to a branch as you edit.
 
-## ✨ Features
+## Features
 
-- **Recursive file watching** — monitors the current directory and all subdirectories.
-- **Smart debouncing** — waits for file system "event storms" to settle (default: 3 seconds) before committing, avoiding noisy commits during bulk operations like `npm install` or code formatting.
-- **Auto-commit & push** — stages all changes, commits with a default message, and pushes to the configured remote (if any).
-- **Pre-flight sanity checks** — verifies the repository is clean and in sync with its upstream before starting.
-- **Bare repo auto-init** — if `GIT_DIR` and `GIT_WORK_TREE` are set and missing, they are created and initialised automatically.
-- **Filters noise** — ignores `Access` events which would otherwise trigger unnecessary commits.
+- **Recursive filesystem watching** of the current directory using
+  [`notify`](https://crates.io/crates/notify).
+- **Debounced commits** — bursts of file events (e.g. a save that touches many
+  files, or a build that writes temp files) are collected for 3 seconds and
+  committed as a single batch, rather than one commit per event.
+- **Pre-flight safety checks** before watching starts, so `wac` never commits
+  on top of a messy or out-of-sync repo:
+  - confirms the current directory is a Git repository,
+  - refuses to start if there are pre-existing staged or unstaged changes,
+  - refuses to start if there are untracked files,
+  - fetches from the remote (if one is configured) and verifies `HEAD` is in
+    sync with its upstream branch, reporting how many commits you are ahead,
+    behind, or diverged.
+- **Automatic push** — after each commit, `wac` pushes to the remote if one is
+  configured; if not, it simply commits locally.
+- **Bare-repo auto-initialisation** — if `GIT_WORK_TREE` and `GIT_DIR` are set
+  and point at a directory/repo that doesn't exist yet, `wac` creates the work
+  tree and initialises the bare repository for you.
+- **No-op safe** — if a debounced batch of events doesn't actually change the
+  index (e.g. a file was written back to its original contents), `wac` skips
+  the commit instead of creating an empty one.
 
----
+## Installation
 
-## 📦 Requirements
+### Cargo
 
-- [Rust](https://www.rust-lang.org/) (1.70+ recommended) with Cargo
-- `git` available on your `PATH`
-- A Git repository (or the ability to create one via `GIT_DIR`/`GIT_WORK_TREE` environment variables)
-
----
-## 🚀 Installation
-
-### From crates.io *(recommended)*
-
-```bash
+```sh
 cargo install watch-and-commit
 ```
 
-This downloads, compiles, and places the `wac` binary in `~/.cargo/bin/`.
-Make sure that directory is on your `PATH` (the `rustup` installer adds it automatically).
+### cargo-binstall
 
-```bash
-wac --help
-```
+Pre-built binaries are published on GitHub Releases and can be fetched
+directly, skipping compilation:
 
-### With cargo-binstall (prebuilt, no compiling)
-
-```bash
+```sh
 cargo binstall watch-and-commit
 ```
 
-[`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall) fetches a prebuilt `wac` binary for your platform straight from the [GitHub Releases](https://github.com/rodolfovillaruz/watch-and-commit/releases) page instead of compiling from source.
+### Homebrew (macOS/Linux)
 
-### With Homebrew (macOS / Linux)
-
-```bash
+```sh
 brew install rodolfovillaruz/tap/watch-and-commit
 ```
 
-### With winget (Windows)
+### Winget (Windows)
 
-```powershell
+```sh
 winget install RodolfoVillaruz.WatchAndCommit
 ```
 
-### Debian / Ubuntu (.deb)
+### Debian/Ubuntu (`.deb`)
 
-Download the `.deb` for your architecture from the [latest release](https://github.com/rodolfovillaruz/watch-and-commit/releases/latest) and install it:
+Download the `.deb` asset from the
+[latest release](https://github.com/rodolfovillaruz/watch-and-commit/releases)
+and install it:
 
-```bash
+```sh
 sudo dpkg -i wac_*.deb
 ```
 
 ### From source
 
-Clone the repository and build:
-
-```bash
-git clone https://github.com/rodolfovillaruz/watch-and-commit
+```sh
+git clone https://github.com/rodolfovillaruz/watch-and-commit.git
 cd watch-and-commit
 cargo build --release
+# binary is at target/release/wac
 ```
 
-The compiled binary will be available at `target/release/wac`.
+All install methods produce a binary named **`wac`**.
 
-### Dependencies
+## Usage
 
-This project uses the following crates (add to your `Cargo.toml` if setting up from scratch):
+Run it from inside the Git repository you want to auto-commit:
 
-```toml
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-notify = "8"
+```sh
+wac
 ```
 
----
+`wac` will:
 
-## 🏃 Usage
+1. Run pre-flight checks (clean working tree, no untracked files, in sync
+   with upstream if a remote exists).
+2. Start watching the current directory (`.`) recursively.
+3. On file activity, wait for a 3-second quiet period, then run:
+   ```sh
+   git add .
+   git commit -m "Update"
+   git push   # only if a remote is configured
+   ```
+4. Repeat until you stop it with `Ctrl+C`.
 
-### Basic usage
-
-From inside any Git repository:
-
-```bash
-cargo run --release
-```
-
-The watcher will:
-1. Run pre-flight checks on the current working directory.
-2. Start monitoring the current directory (`.`) recursively.
-3. Debounce events and auto-commit whenever the dust settles.
-
-Press **Ctrl+C** to stop.
+If the pre-flight checks fail (dirty tree, untracked files, or a
+diverged/behind/ahead branch), `wac` prints the reason and exits without
+watching anything — commit, stash, push, or pull as needed and re-run it.
 
 ### Using a detached work tree
 
-You can watch a directory while storing the Git metadata in a separate bare repository by setting the standard Git environment variables:
+You can watch a directory while storing Git metadata in a separate bare
+repository via the standard Git environment variables:
 
-```bash
+```sh
 export GIT_DIR=/path/to/bare/repo.git
 export GIT_WORK_TREE=/path/to/watched/files
-cargo run --release
+wac
 ```
 
-If either directory does not exist, it will be created, and a bare repository will be initialised at `GIT_DIR` automatically.
+If either path doesn't exist yet, `wac` creates the work tree directory and
+initialises a bare repository at `GIT_DIR` automatically before watching
+starts.
 
----
+## How it works
 
-## 🔄 How It Works
+The project is a small `tokio` async binary split into three modules:
 
-```
-┌─────────────────┐    events     ┌──────────────┐    batched    ┌───────────────┐
-│  notify Watcher │──────────────▶│  Debouncer   │──────────────▶│ Event Handler │
-│  (file system)  │   (mpsc tx)   │ (tokio task) │  (3s window)  │  + git commit │
-└─────────────────┘               └──────────────┘               └───────────────┘
-```
+- **`main.rs`** — runs the pre-flight checks, sets up the `notify` watcher,
+  and wires filesystem events into an `mpsc` channel (capacity 100) consumed
+  by the debouncer. Also handles optional bare-repo initialisation via
+  `GIT_WORK_TREE` / `GIT_DIR`.
+- **`debouncer.rs`** — receives events from the channel and coalesces bursts
+  of activity: it waits for the first event, then keeps collecting further
+  events (resetting a 3-second timer each time) until things go quiet, then
+  hands the whole batch to the event handler.
+- **`event_handler.rs`** — logs a human-readable summary of each event in the
+  batch (created/modified/renamed/removed files), then runs `git add .`,
+  checks whether the index actually changed, and if so commits with the
+  message `"Update"` and pushes if a remote is configured.
 
-1. **`notify::RecommendedWatcher`** produces events for any change in the watched directory.
-2. Events are sent over a bounded `tokio::sync::mpsc` channel (capacity: 100).
-3. The **debouncer** receives the first event, then keeps collecting events until a quiet period of `debounce_duration` (3 seconds) has elapsed.
-4. The accumulated batch is handed off to the **event handler**, which:
-   - Logs each event.
-   - Runs `git add .`.
-   - Checks if anything was actually staged (skips empty commits).
-   - Runs `git commit -m "Update"`.
-   - Runs `git push` (only if a remote is configured).
+Filesystem "access" events (e.g. a file merely being read) are filtered out
+at the watcher level so they don't trigger commits.
 
----
+## Caveats
 
-## 🛡️ Pre-flight Checks
+- `git add .` stages **all** changes in the work tree — rely on `.gitignore`
+  for anything that shouldn't be committed.
+- Every commit uses the fixed message `"Update"`; there's no diff
+  summarisation.
+- Designed for personal/scratch workflows (notes repos, pairing sessions,
+  auto-saved WIP branches) — not intended for shared, production, or
+  protected branches.
 
-Before the watcher starts, it runs a series of checks to ensure a sane starting state:
+## Development
 
-| # | Check                                                             | Failure behaviour |
-|---|-------------------------------------------------------------------|-------------------|
-| 0 | Auto-create work tree & init bare repo if env vars are set        | Errors if creation fails |
-| 1 | Current directory is inside a Git work tree                       | Aborts            |
-| 2 | No staged or unstaged tracked changes                             | Aborts            |
-| 3 | No untracked (non-ignored) files                                  | Aborts (shows up to 10 files) |
-| 4 | `git fetch` succeeds (only if a remote is configured)             | Aborts            |
-| 5 | `HEAD` matches upstream tracking branch (ahead/behind/diverged)   | Aborts with details |
+A `Makefile` wraps the common Cargo workflows:
 
-If no remote is configured, sync checks are skipped with a friendly notice.
-
----
-
-## ⚙️ Configuration
-
-Currently, configuration is done by editing `src/main.rs`:
-
-- **Debounce window** — `Duration::from_secs(3)` in `main()`.
-- **Watched path** — `Path::new(".")` in `main()`.
-- **Commit message** — `"Update"` in `src/event_handler.rs::run_git_commit`.
-- **Channel capacity** — `mpsc::channel(100)` in `main()`.
-
----
-
-## 📂 Project Structure
-
-```
-src/
-├── main.rs            # Entry point, pre-flight checks, watcher setup
-├── debouncer.rs       # Async debouncing logic over an mpsc::Receiver
-└── event_handler.rs   # Event pretty-printing and git operations
+```sh
+make fmt        # cargo fmt --all
+make lint       # cargo clippy -- -D warnings
+make test       # cargo test
+make build      # cargo build --release
+make check      # fmt + lint + test + build
+make verify     # cargo verify-project
+make dry-run    # check + verify + cargo publish --dry-run
+make clean      # cargo clean
 ```
 
----
+Releases are cut with `make tag` (tags and pushes `vX.Y.Z`) followed by
+`make publish` (dry-run, tag, then `cargo publish`). Pushing a `v*` tag
+triggers `.github/workflows/release.yml`, which creates a GitHub Release,
+uploads cross-platform binaries and a `.deb` package, and updates the
+Homebrew tap and Winget manifest.
 
-## ⚠️ Caveats
+## License
 
-- **Force-commits everything**: `git add .` stages _all_ changes in the work tree. Use a good `.gitignore`.
-- **Fixed commit message**: every commit is `"Update"`. No change summarisation (yet).
-- **No rate limiting on push**: if you make rapid-fire edits on a slow connection, `git push` may queue up.
-- **Not recommended for public-facing branches**: this tool is designed for personal notes, scratch repos, and "save every change" workflows — not for shared production branches.
-
----
-
-## 🧪 Example Output
-
-```
---- Async File Watcher with 3-Second Debounce ---
-Fetching from remote...
-Fetch complete.
-✅ Repository is clean and in sync with 'origin/main'.
-Monitoring changes in: '.'
-Press Ctrl+C to exit.
--> Event received. Starting debounce timer...
--> Event received. Resetting debounce timer...
-
-=======================================================
-✅ DEBOUNCED ACTION! Processing 2 events...
-=======================================================
-[MODIFY] File content changed: ./notes.md
-[MODIFY] File content changed: ./notes.md
--------------------------------------------------------
-🚀 Executing git auto-commit...
--> Running: git add .
-[SUCCESS] Staged changes.
--> Running: git commit -m "Update"
-[SUCCESS] Committed changes:
-[main a1b2c3d] Update
- 1 file changed, 3 insertions(+)
--> Running: git push
-[SUCCESS] Pushed changes.
--------------------------------------------------------
-```
-
----
-
-## 🚚 Releasing
-
-Running `make tag` (or `make publish`) pushes a `vX.Y.Z` tag, which triggers [`.github/workflows/release.yml`](.github/workflows/release.yml). That workflow:
-
-1. Creates a GitHub Release for the tag.
-2. Cross-compiles `wac` for Linux (x86_64/aarch64, gnu/musl), macOS (x86_64/aarch64), and Windows (x86_64), and attaches archives + checksums.
-3. Builds and attaches a `.deb` package via `cargo-deb`.
-4. Pushes an updated formula to the `homebrew-tap` repo.
-5. Opens a PR to `microsoft/winget-pkgs` bumping the winget manifest.
-
-`cargo-binstall` needs no extra step — it resolves binaries directly from the release assets using `[package.metadata.binstall]` in `Cargo.toml`.
-
-### One-time setup (already-configured channels need nothing further)
-
-- **Homebrew**: create an empty `rodolfovillaruz/homebrew-tap` GitHub repo, then add a classic PAT with `repo` scope as the `HOMEBREW_TAP_TOKEN` secret on this repo.
-- **winget**: fork `microsoft/winget-pkgs`, add a classic PAT with `public_repo` scope as the `WINGET_TOKEN` secret on this repo, and submit the **first** manifest manually (e.g. with [`komac`](https://github.com/russellbanks/Komac) or `wingetcreate`) — `winget-releaser` only automates version *updates* to an already-registered package.
-
-## 📄 License
-
-[MIT](LICENSE)
-
----
-
-## 🙏 Acknowledgements
-
-- [`notify`](https://crates.io/crates/notify) — cross-platform file system notifications.
-- [`tokio`](https://tokio.rs/) — asynchronous runtime for Rust.
+MIT — see [LICENSE](LICENSE).
