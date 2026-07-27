@@ -98,14 +98,14 @@ fn preflight_checks() -> Result<(), Box<dyn std::error::Error>> {
         .args(["diff", "--quiet"])
         .status()?
         .code()
-        .map_or(true, |c| c != 0);
+        != Some(0);
 
     // `git diff --cached --quiet` exits with 1 if there are staged changes.
     let has_staged = Command::new("git")
         .args(["diff", "--cached", "--quiet"])
         .status()?
         .code()
-        .map_or(true, |c| c != 0);
+        != Some(0);
 
     if has_unstaged || has_staged {
         let mut msg = String::from("Repository has uncommitted tracked changes:\n");
@@ -172,7 +172,7 @@ fn preflight_checks() -> Result<(), Box<dyn std::error::Error>> {
         let upstream = upstream.trim();
 
         let (_, local_hash, _) = run_git(&["rev-parse", "HEAD"])?;
-        let (_, remote_hash, _) = run_git(&["rev-parse", &format!("{}", upstream)])?;
+        let (_, remote_hash, _) = run_git(&["rev-parse", upstream])?;
         let local_hash = local_hash.trim();
         let remote_hash = remote_hash.trim();
 
