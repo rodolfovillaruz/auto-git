@@ -20,3 +20,34 @@ path = "src/main.rs"
 [dependencies]
 notify = "8.2.0"
 tokio = { version = "1.47.1", features = ["full"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+# Matches the archive layout produced by taiki-e/upload-rust-binary-action
+# in .github/workflows/release.yml: wac-<target>.tar.gz / wac-<target>.zip
+# with the `wac` binary at the archive root.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/wac-{ target }{ archive-suffix }"
+bin-dir = "wac{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[package.metadata.deb]
+maintainer = "Rodolfo Villaruz <rodolfo@yes.ph>"
+copyright = "2025, Rodolfo Villaruz <rodolfo@yes.ph>"
+extended-description = """\
+A Rust-based file system watcher that automatically commits (and optionally \
+pushes) changes to a Git repository whenever files are modified."""
+depends = "git"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/wac", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/watch-and-commit/README.md", "644"],
+    ["LICENSE", "usr/share/doc/watch-and-commit/LICENSE", "644"],
+]

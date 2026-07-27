@@ -37,6 +37,34 @@ Make sure that directory is on your `PATH` (the `rustup` installer adds it autom
 wac --help
 ```
 
+### With cargo-binstall (prebuilt, no compiling)
+
+```bash
+cargo binstall watch-and-commit
+```
+
+[`cargo-binstall`](https://github.com/cargo-bins/cargo-binstall) fetches a prebuilt `wac` binary for your platform straight from the [GitHub Releases](https://github.com/rodolfovillaruz/watch-and-commit/releases) page instead of compiling from source.
+
+### With Homebrew (macOS / Linux)
+
+```bash
+brew install rodolfovillaruz/tap/watch-and-commit
+```
+
+### With winget (Windows)
+
+```powershell
+winget install RodolfoVillaruz.WatchAndCommit
+```
+
+### Debian / Ubuntu (.deb)
+
+Download the `.deb` for your architecture from the [latest release](https://github.com/rodolfovillaruz/watch-and-commit/releases/latest) and install it:
+
+```bash
+sudo dpkg -i wac_*.deb
+```
+
 ### From source
 
 Clone the repository and build:
@@ -193,9 +221,26 @@ Press Ctrl+C to exit.
 
 ---
 
+## 🚚 Releasing
+
+Running `make tag` (or `make publish`) pushes a `vX.Y.Z` tag, which triggers [`.github/workflows/release.yml`](.github/workflows/release.yml). That workflow:
+
+1. Creates a GitHub Release for the tag.
+2. Cross-compiles `wac` for Linux (x86_64/aarch64, gnu/musl), macOS (x86_64/aarch64), and Windows (x86_64), and attaches archives + checksums.
+3. Builds and attaches a `.deb` package via `cargo-deb`.
+4. Pushes an updated formula to the `homebrew-tap` repo.
+5. Opens a PR to `microsoft/winget-pkgs` bumping the winget manifest.
+
+`cargo-binstall` needs no extra step — it resolves binaries directly from the release assets using `[package.metadata.binstall]` in `Cargo.toml`.
+
+### One-time setup (already-configured channels need nothing further)
+
+- **Homebrew**: create an empty `rodolfovillaruz/homebrew-tap` GitHub repo, then add a classic PAT with `repo` scope as the `HOMEBREW_TAP_TOKEN` secret on this repo.
+- **winget**: fork `microsoft/winget-pkgs`, add a classic PAT with `public_repo` scope as the `WINGET_TOKEN` secret on this repo, and submit the **first** manifest manually (e.g. with [`komac`](https://github.com/russellbanks/Komac) or `wingetcreate`) — `winget-releaser` only automates version *updates* to an already-registered package.
+
 ## 📄 License
 
-Add your preferred license here (e.g. MIT, Apache-2.0).
+[MIT](LICENSE)
 
 ---
 
